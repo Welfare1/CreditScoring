@@ -8,10 +8,3 @@ xgboost
 lightgbm
 catboost
 joblib
-<<<<<<< HEAD
-flask
-gunicorn
-uvicorn
-=======
-flask
->>>>>>> fb064c35a33a1bb904dd5f87c37e14a9db3f32af
