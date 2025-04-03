@@ -9,3 +9,6 @@ lightgbm
 catboost
 joblib
 streamlit
+plotly
+datetime
+requests

@@ -2,6 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import requests
+from datetime import datetime
+from dotenv import load_dotenv
+import os
+
 
 # Configuration de la page
 st.set_page_config(layout="wide", page_icon="💳", page_title="Portail Client - Analyse Risque")
@@ -86,6 +91,10 @@ credit_scores = {
 }
 
 data = load_data()
+dataTest = pd.read_csv("data/Test.csv")
+dataTrain = pd.read_csv("data/Train.csv")
+
+
 
 # Interface utilisateur
 with st.container():
@@ -100,15 +109,32 @@ with st.form("client_search"):
         client_id = st.text_input("🔍 Identifiant Client", placeholder="Saisissez l'ID client...")
     with cols[1]:
         st.form_submit_button("Rechercher", type="primary")
+    with cols[2]:
+        st.form_submit_button("Génération aléatoire", type="secondary")
 
 if client_id:
     try:
         client_id = int(client_id)
-        filtered_data = data[data['client_id'] == client_id].copy()
 
-        if not filtered_data.empty:
-            client_credit_score = credit_scores.get(client_id, 600)
-            plafond = client_credit_score * 10
+        if "client_id" not in st.session_state or st.session_state.client_id != client_id:
+            # Réinitialisation du state pour le nouveau client
+            st.session_state.client_id = client_id
+            st.session_state.total_amount_repay = None
+
+        
+        filtered_dataTest = dataTest[dataTest["customer_id"] == client_id].copy()
+        filtered_dataTrain = dataTrain[dataTrain["customer_id"] == client_id].copy()
+
+        if not filtered_dataTest.empty:
+            #client_credit_score = credit_scores.get(client_id, 600)
+            client_credit_score = 700  # Valeur par défaut pour le test
+            plafond = client_credit_score * 10 
+
+            first_transaction = filtered_dataTest.iloc[0]
+
+            # Si le montant n'est pas encore initialisé, le définir
+            if st.session_state.total_amount_repay is None:
+                st.session_state.total_amount_repay = first_transaction['Total_Amount_to_Repay']
 
             # En-tête des métriques
             with st.container():
@@ -124,7 +150,7 @@ if client_id:
                     st.markdown(f"""
                         <div class="styled-container">
                             <div class="metric-label">PLAFOND AUTORISÉ</div>
-                            <div class="metric-value">{plafond} €</div>
+                            <div class="metric-value">{plafond} $</div>
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -134,7 +160,10 @@ if client_id:
             with col1:
                 with st.container():
                     st.markdown("### 📝 Détails Transaction")
-                    first_transaction = filtered_data.iloc[0]
+                    first_transaction = filtered_dataTest.iloc[0]
+                    interestRate = int((first_transaction["Total_Amount_to_Repay"]-first_transaction["Total_Amount"])* 100 / (first_transaction["Total_Amount"]+1e-6) )
+                    # Montant à rembourser
+                    total_amount_repay = first_transaction["Total_Amount"]* (1 + interestRate / 100)
 
                     # Grid layout avec date modifiable
                     col_grid1, col_grid2 = st.columns(2)
@@ -143,43 +172,126 @@ if client_id:
                         st.markdown(f"""
                             <div class="styled-container">
                                 <div class="metric-label">ID TRANSACTION</div>
-                                <div class="metric-value">{first_transaction['id_transaction']}</div>
+                                <div class="metric-value">{first_transaction['ID']}</div>
                             </div>
                             <div class="styled-container">
                                 <div class="metric-label">MONTANT INITIAL</div>
-                                <div class="metric-value">{first_transaction['montant']} €</div>
+                                <div class="metric-value">{first_transaction['Total_Amount']} $</div>
                             </div>
+                            <div class="styled-container">
+                                <div class="metric-label">DATE DE CONTRACTION</div>
+                                <div class="metric-value">{first_transaction["disbursement_date"]}</div>
+                            </div>
+                            
                         """, unsafe_allow_html=True)
-                    
+                    if "total_amount_repay" not in st.session_state:
+                        st.session_state.total_amount_repay = first_transaction['Total_Amount']
+
                     with col_grid2:
                         st.markdown(f"""
                             <div class="styled-container">
                                 <div class="metric-label">STATUT</div>
-                                <div class="metric-value" style="color: {'#2A9D8F' if first_transaction['statut'] == 'Validé' else '#E76F51'};">{first_transaction['statut']}</div>
+                                <div class="metric-value" style="color: {'#2A9D8F' if first_transaction['loan_type'] == "Repeat Loan" else '#E76F51'};">{first_transaction['loan_type']}</div>
                             </div>
+                            <div class="styled-container">
+                                <div class="metric-label">MONTANT A REMBOURSER</div>
+                                <div class="metric-value">{st.session_state.total_amount_repay:.2f} $</div>
+                            </div>
+                            
                         """, unsafe_allow_html=True)
                         
                         # Sélecteur de date
                         new_date = st.date_input(
-                            "Date transaction :",
-                            pd.to_datetime(first_transaction['date']).date(),
-                            key=f"date_{first_transaction['id_transaction']}",
+                            "Date d'écheance :",
+                            pd.to_datetime(first_transaction["due_date"]).date(),
+                            key=f"date_{first_transaction["due_date"]}",
                             format="DD/MM/YYYY",
                             help="Modifier la date de la transaction"
                             )
-                        filtered_data.loc[filtered_data['id_transaction'] == first_transaction['id_transaction'], 'date'] = new_date.strftime('%Y-%m-%d')
+                        # filtered_dataTest.loc[filtered_dataTest['id_transaction'] == first_transaction['ID'], 'date'] = new_date.strftime('%Y-%m-%d')
+
+                    # Définition du callback qui met à jour le montant à rembourser
+                    def update_total_amount_repay():
+                        current_rate = st.session_state.interestRate  # Récupération de la valeur mise à jour du slider
+                        st.session_state.total_amount_repay = first_transaction['Total_Amount'] * (1 + current_rate / 100)
 
                     # Contrôles interactifs (ajustement du montant et probabilité)
                     with st.container():
-                        montant_saisi = st.slider("💰 Ajustement du montant", 
-                                                0, 
-                                                plafond, 
-                                                first_transaction['montant'])
-                        probabilite = (1 - (montant_saisi / plafond)) * 100
-                        st.metric("Probabilité de Remboursement",
-                                f"{probabilite:.1f}%",
-                                delta_color="off",
-                                help="Probabilité estimée basée sur le ratio montant/plafond")
+                        # Contrôle interactif : le slider pour le taux d'intérêt
+                        # Slider avec le callback
+                        interestRate = st.slider(
+                            "💰 TAUX D'INTERET",
+                            0,
+                            70,
+                            value=int((first_transaction["Total_Amount_to_Repay"] - first_transaction["Total_Amount"]) * 100 / (first_transaction["Total_Amount"] + 1e-6)),
+                            key="interestRate",
+                            on_change=update_total_amount_repay
+                        )
+
+                        # Bouton Evaluer positionné juste en dessous du slider
+                        if st.button("Simulation", key="evaluer_button"):
+                            # Calcul de la durée en jours entre la date de déblocage et la nouvelle date (due_date modifiée)
+                            disbursement_date = datetime.strptime(first_transaction["disbursement_date"], "%Y-%m-%d")
+                            # new_date est obtenu via le date_input précédemment
+                            duration = (new_date - disbursement_date.date()).days
+                            
+                            # Construction du payload à envoyer à l'API
+                            payload = {
+                                    "customer_id": int(first_transaction["customer_id"]),
+                                    "tbl_loan_id": int(first_transaction["tbl_loan_id"]),
+                                    "lender_id": int(first_transaction["lender_id"]),
+                                    "Total_Amount": float(first_transaction["Total_Amount"]),
+                                    "Total_Amount_to_Repay": float(st.session_state.total_amount_repay),
+                                    "duration": duration,
+                                    "New_versus_Repeat": first_transaction["New_versus_Repeat"],
+                                    "Amount_Funded_By_Lender": float(first_transaction["Amount_Funded_By_Lender"]),
+                                    "Lender_portion_Funded": float(first_transaction["Lender_portion_Funded"]),
+                                    "Lender_portion_to_be_repaid": float(st.session_state.total_amount_repay) * float(first_transaction["Lender_portion_Funded"]),
+                                    "disbursement_date": first_transaction["disbursement_date"],
+                                    "due_date": new_date.strftime("%Y-%m-%d")
+                                }
+                            
+                            # Appel à l'API
+                            url = "https://AmedBah-CreditSoring.hf.space/predict"  # l'URL Space
+                            load_dotenv()  # Charge les variables d'environnement du fichier .env
+                            API_TOKEN = os.getenv("HF_API_TOKEN")
+
+                            headers = {
+                                "Authorization": f"Bearer {API_TOKEN}",
+                                "Content-Type": "application/json"
+                            }
+
+                            try:
+                                response = requests.post(url, headers=headers, json=payload)
+                                if response.status_code == 200:
+                                    res = response.json()
+                                    # On attend un retour de la forme : {'prediction': 0, 'probability': 0.00059}
+                                    probability = res.get("probability")
+                                    if probability is not None:
+                                        probabilite = probability * 100  # Conversion en pourcentage
+                                        st.metric("Probabilité de défaut", f"{probabilite:.1f}%")
+                                    else:
+                                        st.error("Réponse de l'API invalide : clé 'probability' manquante")
+                                else:
+                                    st.error(f"Erreur lors de l'appel à l'API : {response.status_code}")
+                            except Exception as e:
+                                st.error(f"Exception lors de l'appel à l'API : {e}")
+
+                    def get_client_data(client_id):
+                        """Récupère les données du client à partir de son ID"""
+                        return dataTest[dataTest["customer_id"] == client_id].iloc[0].to_dict()
+                        
+                    # Recalcul du montant à rembourser à chaque modification du slider
+                    def update_total_amount_repay(initial_amount, rate):
+                        st.session_state.total_amount_repay = initial_amount * (1 + rate / 100)
+                        
+                    
+                    def update_total_amount_on_client_change():
+                        current_client_data = get_client_data(client_id)
+                        current_rate = st.session_state.get("interestRate", 0)
+                        st.session_state.total_amount_repay = current_client_data["Total_Amount"] * (1 + current_rate / 100)
+                        
+                        
 
             with col2:
                 with st.container():
@@ -207,10 +319,10 @@ if client_id:
             # Section tableau historique
             with st.container():
                 st.markdown("### 📅 Historique des Transactions")
-                styled_df = filtered_data.style \
-                    .background_gradient(subset=['montant'], cmap='Blues') \
+                styled_dataTest = filtered_dataTrain.style \
+                    .background_gradient(subset=["Total_Amount"], cmap='Blues') \
                     .format({'montant': "{:} €"})
-                st.dataframe(styled_df, use_container_width=True, height=400)
+                st.dataframe(styled_dataTest, use_container_width=True, height=400)
 
         else:
             st.warning("Aucune transaction trouvée pour ce client")
