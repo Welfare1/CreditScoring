@@ -12,4 +12,5 @@ streamlit
 plotly
 datetime
 requests
-dotenv
+python-dotenv
+shap
