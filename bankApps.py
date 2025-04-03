@@ -101,6 +101,12 @@ def generate_random_id():
     else:
         st.error("Aucun client disponible")
 
+# Interface utilisateur
+with st.container():
+    col_title, _ = st.columns([9, 6])
+    with col_title:
+        st.markdown("# 💼 Portail Client - Analyse Risque credit")
+
 # Formulaire de recherche
 with st.form("client_search"):
     cols = st.columns([3, 1, 8])
