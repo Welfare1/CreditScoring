@@ -4,15 +4,21 @@ import numpy as np
 import joblib
 from datetime import datetime
 import os
+from scipy.stats import mode
+
 
 # Initialiser l'application Flask
 app = Flask(__name__)
 
 # Charger le modèle XGBoost pré-entraîné
 
-model_path = os.path.join("Model","model2.pkl")
+model_path1 = os.path.join("Model","model1.pkl")
+model_path2 = os.path.join("Model","model2.pkl")
+model_path3 = os.path.join("Model","model3.pkl")
 
-model = joblib.load(model_path)
+xgb_model = joblib.load(model_path1)
+lgb_model = joblib.load(model_path2 )
+cat_model = joblib.load(model_path3)
 
 # Définir la fonction pour calculer les nouvelles variables
 def preprocess_input_data(input_data):
@@ -93,26 +99,46 @@ def accueil():
 
 # Définir la route pour l'API
 @app.route('/predict', methods=['POST'])
+
 def predict():
+    
     try:
-        # Récupérer les données JSON envoyées dans la requête
         input_json = request.json
         input_data = pd.DataFrame([input_json])
-
-        # Prétraiter les données d'entrée
         processed_data = preprocess_input_data(input_data)
-
-        # Faire des prédictions avec le modèle
-        prediction = model.predict(processed_data)
-        probability = model.predict_proba(processed_data)[:, 1]
-
-        # Retourner les résultats
+        
+        # Prédictions des trois modèles
+        pred_xgb = xgb_model.predict(processed_data)
+        pred_lgb = lgb_model.predict(processed_data)
+        pred_cat = cat_model.predict(processed_data)
+        
+        prob_xgb = xgb_model.predict_proba(processed_data)[:, 1]
+        prob_lgb = lgb_model.predict_proba(processed_data)[:, 1]
+        prob_cat = cat_model.predict_proba(processed_data)[:, 1]
+        
+        predictions=[]
+        pred_prob=[]
+        #Append predictions
+        predictions.append(pred_xgb)
+        predictions.append(pred_lgb)
+        predictions.append(pred_cat)
+        pred_prob.append(prob_xgb)
+        pred_prob.append(prob_lgb)
+        pred_prob.append(prob_cat)
+        
+        # Agrégation des prédictions (vote majoritaire)
+        
+        final_prediction = mode(predictions, axis=0).mode.flatten()
+        
+        # Moyenne des probabilités
+        final_probability = np.mean(pred_prob,axis=0)
+        
         result = {
-            'prediction': int(prediction[0]),
-            'probability': float(probability[0])
+            'prediction': int(final_prediction[0]),
+            'probability': float(final_probability[0])
         }
         return jsonify(result)
-
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -120,4 +146,3 @@ def predict():
 
 if __name__ == '__main__':
    app.run(host="0.0.0.0", port=7860)
-
