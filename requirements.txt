@@ -8,3 +8,10 @@ xgboost
 lightgbm
 catboost
 joblib
+streamlit
+plotly
+datetime
+requests
+python-dotenv
+shap
+flask
