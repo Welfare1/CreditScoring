@@ -80,7 +80,7 @@ def load_data():
 
 @st.cache_resource
 def load_model():
-    model_path = os.path.join("Model","model2.pkl")
+    model_path = os.path.join("Model","model3.pkl")
     return joblib.load(model_path)
 
 model1 = load_model()
