@@ -68,15 +68,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Chargement des données et modèle
-@st.cache_data
-def load_data():
-    return pd.DataFrame({
-        'id_transaction': [1, 2, 3, 4, 5, 6],
-        'client_id': [1, 2, 1, 3, 2, 1],
-        'montant': [250, 150, 400, 300, 500, 600],
-        'date': ['2024-03-01', '2024-03-05', '2024-03-10', '2024-03-15', '2024-03-20', '2024-03-20'],
-        'statut': ['Validé', 'En attente', 'Refusé', 'Validé', 'Validé', 'Validé']
-    })
 
 @st.cache_resource
 def load_model():
@@ -84,7 +75,6 @@ def load_model():
     return joblib.load(model_path)
 
 model1 = load_model()
-data = load_data()
 dataTest = pd.read_csv("data/Test.csv")
 dataTrain = pd.read_csv("data/Train.csv")
 
